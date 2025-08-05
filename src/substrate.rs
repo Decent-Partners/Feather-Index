@@ -98,7 +98,14 @@ impl Indexer {
             }
         };
 
-        Ok((block_number, 0, key_count))
+        let block = api.blocks().at(block_hash).await?;
+        let extrinsics = block.extrinsics().await?;
+
+        Ok((
+            block_number,
+            extrinsics.len().try_into().unwrap(),
+            key_count,
+        ))
     }
 }
 
@@ -272,7 +279,7 @@ pub async fn substrate_index(
                         };
                         trees.span.insert(current_span.end.to_be_bytes(), value.as_bytes())?;
                         info!(
-                            "✨ #{}: {} events, {} keys",
+                            "✨ #{}: {} extrinsics, {} keys",
                             block_number.to_formatted_string(&Locale::en),
                             event_count.to_formatted_string(&Locale::en),
                             key_count.to_formatted_string(&Locale::en),
@@ -297,7 +304,7 @@ pub async fn substrate_index(
                 let duration = (current_time.duration_since(stats_start_time)).as_micros();
                 if duration != 0 {
                     info!(
-                        "📚 #{}: {} blocks/sec, {} events/sec, {} keys/sec",
+                        "📚 #{}: {} blocks/sec, {} extrinsics/sec, {} keys/sec",
                         current_span.start.to_formatted_string(&Locale::en),
                         (<u32 as Into<u128>>::into(stats_block_count) * 1_000_000 / duration).to_formatted_string(&Locale::en),
                         (<u32 as Into<u128>>::into(stats_event_count) * 1_000_000 / duration).to_formatted_string(&Locale::en),
