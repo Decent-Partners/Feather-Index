@@ -2,6 +2,7 @@ use ahash::AHashMap;
 use futures::future;
 use num_format::{Locale, ToFormattedString};
 use sled::Tree;
+use subxt::ext::scale_value::{At, Composite, Primitive, Value, ValueDef};
 use subxt::{
     OnlineClient, PolkadotConfig, blocks::Block, ext::subxt_rpcs::LegacyRpcMethods,
     metadata::Metadata,
@@ -61,45 +62,45 @@ impl Indexer {
             Some(block_hash) => block_hash,
             None => return Err(IndexError::BlockNotFound(block_number)),
         };
-        // Get the runtime version of the block.
-        let runtime_version = rpc.state_get_runtime_version(Some(block_hash)).await?;
-
-        let metadata_map = self.metadata_map_lock.read().await;
-        let metadata = match metadata_map.get(&runtime_version.spec_version) {
-            Some(metadata) => {
-                let metadata = metadata.clone();
-                drop(metadata_map);
-                metadata
-            }
-            None => {
-                drop(metadata_map);
-                let mut metadata_map = self.metadata_map_lock.write().await;
-
-                match metadata_map.get(&runtime_version.spec_version) {
-                    Some(metadata) => metadata.clone(),
-                    None => {
-                        info!(
-                            "Downloading metadata for spec version {}",
-                            runtime_version.spec_version
-                        );
-                        let metadata: Metadata = rpc
-                            .state_get_metadata(Some(block_hash))
-                            .await?
-                            .to_frame_metadata()?
-                            .try_into()?;
-                        info!(
-                            "Finished downloading metadata for spec version {}",
-                            runtime_version.spec_version
-                        );
-                        metadata_map.insert(runtime_version.spec_version, metadata.clone());
-                        metadata
-                    }
-                }
-            }
-        };
 
         let block = api.blocks().at(block_hash).await?;
         let extrinsics = block.extrinsics().await?;
+        // Look for remarks.
+        for xt in extrinsics.iter() {
+            let address = xt.address_bytes().unwrap();
+            info!("xt: {}, {}", xt.pallet_name()?, xt.variant_name()?);
+            if (xt.pallet_name()? == "System") && (xt.variant_name()? == "remark") {
+                let field_values = xt.field_values()?;
+
+                if let Some(value) = field_values.at("remark") {
+                    let mut remark = String::new();
+
+                    let mut p = 0;
+
+                    while let Some(char) = value.at(p) {
+                        let c: u8 = char.as_u128().unwrap().try_into().unwrap();
+                        remark.push(c.into());
+                        p += 1;
+                    }
+
+                    info!("remark: {:#?}", remark);
+
+                    let components: Vec<&str> = remark.split("::").collect();
+
+                    if components[0] != "FEATHER" {
+                        continue;
+                    }
+
+                    let genre = components[1];
+                    let title = components[2];
+                    let content = components[3];
+
+                    info!("genre:  {:#?}", genre);
+                    info!("title: {:#?}", title);
+                    info!("content: {:#?}", content);
+                }
+            }
+        }
 
         Ok((
             block_number,
