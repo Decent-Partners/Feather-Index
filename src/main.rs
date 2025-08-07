@@ -59,6 +59,7 @@ pub struct Args {
 pub struct Trees {
     pub root: sled::Db,
     pub span: Tree,
+    pub feather: Tree,
 }
 
 pub fn open_trees(db_config: sled::Config) -> Result<Trees, sled::Error> {
@@ -66,6 +67,7 @@ pub fn open_trees(db_config: sled::Config) -> Result<Trees, sled::Error> {
     let trees = Trees {
         root: db.clone(),
         span: db.open_tree(b"span")?,
+        feather: db.open_tree(b"feather")?,
     };
     Ok(trees)
 }

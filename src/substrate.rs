@@ -67,10 +67,10 @@ impl Indexer {
         let block = api.blocks().at(block_hash).await?;
         let extrinsics = block.extrinsics().await?;
         // Look for remarks.
-        for xt in extrinsics.iter() {
+        for (i, xt) in extrinsics.iter().enumerate() {
             let variant_name = xt.variant_name()?;
             if (xt.pallet_name()? == "System")
-                && (variant_name == "remark" || variant_name == "remarkWithEvent")
+                && (variant_name == "remark" || variant_name == "remark_with_event")
             {
                 let field_values = xt.field_values()?;
 
@@ -94,8 +94,8 @@ impl Indexer {
                     }
 
                     if let Some(address) = xt.address_bytes() {
-                        let account_id: [u8; 32] = address[1..33].try_into().unwrap(); // leave out the first byte for some reason
-                        let account_id: AccountId32 = account_id.into();
+                        let account_id_bytes: [u8; 32] = address[1..33].try_into().unwrap(); // leave out the first byte for some reason
+                        let account_id: AccountId32 = account_id_bytes.into();
 
                         let genre = components[1];
                         let title = components[2];
@@ -105,6 +105,15 @@ impl Indexer {
                         info!("Genre: {:#?}", genre);
                         info!("Title: {:#?}", title);
                         info!("Content: {:#?}", content);
+
+                        let key = FeatherDbKey {
+                            block_number: block_number.into(),
+                            index: i.try_into().unwrap(),
+                            account_id: account_id_bytes,
+                        };
+                        self.trees
+                            .feather
+                            .insert(key.as_bytes(), remark.as_bytes())?;
                     }
                 }
             }

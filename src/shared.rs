@@ -34,6 +34,15 @@ pub struct SpanDbValue {
     // pub version: U16<BigEndian>,
 }
 
+/// On-disk format for span value
+#[derive(FromBytes, IntoBytes, Unaligned, PartialEq, Debug, Immutable)]
+#[repr(C)]
+pub struct FeatherDbKey {
+    pub block_number: U32<BigEndian>,
+    pub index: U16<BigEndian>,
+    pub account_id: [u8; 32],
+}
+
 /// Start and end block number for a span of blocks
 #[derive(Serialize, Debug, Clone, PartialEq, Deserialize)]
 pub struct Span {
