@@ -3,6 +3,7 @@ use futures::future;
 use num_format::{Locale, ToFormattedString};
 use sled::Tree;
 use subxt::ext::scale_value::{At, Composite, Primitive, Value, ValueDef};
+use subxt::utils::AccountId32;
 use subxt::{
     OnlineClient, PolkadotConfig, blocks::Block, ext::subxt_rpcs::LegacyRpcMethods,
     metadata::Metadata,
@@ -67,9 +68,10 @@ impl Indexer {
         let extrinsics = block.extrinsics().await?;
         // Look for remarks.
         for xt in extrinsics.iter() {
-            let address = xt.address_bytes().unwrap();
-            info!("xt: {}, {}", xt.pallet_name()?, xt.variant_name()?);
-            if (xt.pallet_name()? == "System") && (xt.variant_name()? == "remark") {
+            let variant_name = xt.variant_name()?;
+            if (xt.pallet_name()? == "System")
+                && (variant_name == "remark" || variant_name == "remarkWithEvent")
+            {
                 let field_values = xt.field_values()?;
 
                 if let Some(value) = field_values.at("remark") {
@@ -91,13 +93,19 @@ impl Indexer {
                         continue;
                     }
 
-                    let genre = components[1];
-                    let title = components[2];
-                    let content = components[3];
+                    if let Some(address) = xt.address_bytes() {
+                        let account_id: [u8; 32] = address[1..33].try_into().unwrap(); // leave out the first byte for some reason
+                        let account_id: AccountId32 = account_id.into();
 
-                    info!("genre:  {:#?}", genre);
-                    info!("title: {:#?}", title);
-                    info!("content: {:#?}", content);
+                        let genre = components[1];
+                        let title = components[2];
+                        let content = components[3];
+
+                        info!("AccountId: {:#?}", account_id.to_string());
+                        info!("Genre: {:#?}", genre);
+                        info!("Title: {:#?}", title);
+                        info!("Content: {:#?}", content);
+                    }
                 }
             }
         }
