@@ -2,13 +2,9 @@ use ahash::AHashMap;
 use futures::future;
 use num_format::{Locale, ToFormattedString};
 use sled::Tree;
-use subxt::ext::scale_value::{At, Composite, Primitive, Value, ValueDef};
+use subxt::ext::scale_value::At;
 use subxt::utils::AccountId32;
-use subxt::{
-    OnlineClient, PolkadotConfig, blocks::Block, ext::subxt_rpcs::LegacyRpcMethods,
-    metadata::Metadata,
-};
-use tokio::sync::RwLock;
+use subxt::{OnlineClient, PolkadotConfig, blocks::Block, ext::subxt_rpcs::LegacyRpcMethods};
 use tokio::sync::watch;
 use tokio::time;
 use tokio::time::MissedTickBehavior;
@@ -25,7 +21,6 @@ pub struct Indexer {
     trees: Trees,
     api: Option<OnlineClient<PolkadotConfig>>,
     rpc: Option<LegacyRpcMethods<PolkadotConfig>>,
-    metadata_map_lock: RwLock<AHashMap<u32, Metadata>>,
 }
 
 impl Indexer {
@@ -38,7 +33,6 @@ impl Indexer {
             trees,
             api: Some(api),
             rpc: Some(rpc),
-            metadata_map_lock: RwLock::new(AHashMap::new()),
         }
     }
 
@@ -49,13 +43,13 @@ impl Indexer {
                 Result<Block<PolkadotConfig, OnlineClient<PolkadotConfig>>, subxt::Error>,
             >,
         >,
-    ) -> Result<(u32, u32, u32), IndexError> {
+    ) -> Result<(u32, u32), IndexError> {
         let block = next.await.unwrap()?;
         self.index_block(block.number()).await
     }
 
-    async fn index_block(&self, block_number: u32) -> Result<(u32, u32, u32), IndexError> {
-        let mut key_count = 0;
+    async fn index_block(&self, block_number: u32) -> Result<(u32, u32), IndexError> {
+        let mut feathers = 0;
         let api = self.api.as_ref().unwrap();
         let rpc = self.rpc.as_ref().unwrap();
 
@@ -114,16 +108,14 @@ impl Indexer {
                         self.trees
                             .feather
                             .insert(key.as_bytes(), remark.as_bytes())?;
+
+                        feathers += 1;
                     }
                 }
             }
         }
 
-        Ok((
-            block_number,
-            extrinsics.len().try_into().unwrap(),
-            key_count,
-        ))
+        Ok((block_number, feathers))
     }
 }
 
@@ -259,8 +251,7 @@ pub async fn substrate_index(
     let mut orphans: AHashMap<u32, ()> = AHashMap::new();
 
     let mut stats_block_count = 0;
-    let mut stats_event_count = 0;
-    let mut stats_key_count = 0;
+    let mut stats_feather_count = 0;
     let mut stats_start_time = Instant::now();
 
     let interval_duration = Duration::from_millis(2000);
@@ -289,7 +280,7 @@ pub async fn substrate_index(
             }
             result = &mut head_future => {
                 match result {
-                    Ok((block_number, event_count, key_count)) => {
+                    Ok((block_number, feather_count)) => {
                         trees.span.remove(current_span.end.to_be_bytes())?;
                         current_span.end = block_number;
                         let value = SpanDbValue {
@@ -297,10 +288,9 @@ pub async fn substrate_index(
                         };
                         trees.span.insert(current_span.end.to_be_bytes(), value.as_bytes())?;
                         info!(
-                            "✨ #{}: {} extrinsics, {} keys",
+                            "✨ #{}: {} feathers",
                             block_number.to_formatted_string(&Locale::en),
-                            event_count.to_formatted_string(&Locale::en),
-                            key_count.to_formatted_string(&Locale::en),
+                            feather_count.to_formatted_string(&Locale::en),
                         );
                         drop(head_future);
                         head_future = Box::pin(indexer.index_head(blocks_sub.next()));
@@ -322,21 +312,19 @@ pub async fn substrate_index(
                 let duration = (current_time.duration_since(stats_start_time)).as_micros();
                 if duration != 0 {
                     info!(
-                        "📚 #{}: {} blocks/sec, {} extrinsics/sec, {} keys/sec",
+                        "📚 #{}: {} blocks/sec, {} feathers/sec",
                         current_span.start.to_formatted_string(&Locale::en),
                         (<u32 as Into<u128>>::into(stats_block_count) * 1_000_000 / duration).to_formatted_string(&Locale::en),
-                        (<u32 as Into<u128>>::into(stats_event_count) * 1_000_000 / duration).to_formatted_string(&Locale::en),
-                        (<u32 as Into<u128>>::into(stats_key_count) * 1_000_000 / duration).to_formatted_string(&Locale::en),
+                        (<u32 as Into<u128>>::into(stats_feather_count) * 1_000_000 / duration).to_formatted_string(&Locale::en),
                     );
                 }
                 stats_block_count = 0;
-                stats_event_count = 0;
-                stats_key_count = 0;
+                stats_feather_count = 0;
                 stats_start_time = current_time;
             }
             (result, index, _) = future::select_all(&mut futures), if is_batching => {
                 match result {
-                    Ok((block_number, event_count, key_count)) => {
+                    Ok((block_number, feather_count)) => {
                         // Is the new block contiguous to the current span or an orphan?
                         if block_number == current_span.start - 1 {
                             current_span.start = block_number;
@@ -355,8 +343,7 @@ pub async fn substrate_index(
                             debug!("⬇️  Block #{} indexed and orphaned.", block_number.to_formatted_string(&Locale::en));
                         }
                         stats_block_count += 1;
-                        stats_event_count += event_count;
-                        stats_key_count += key_count;
+                        stats_feather_count += feather_count;
                     },
                     Err(error) => {
                         match error {
