@@ -26,8 +26,11 @@ use tracing_log::{
     log::{error, info},
 };
 
+use crate::websockets::websockets_listen;
+
 pub mod shared;
 pub mod substrate;
+pub mod websockets;
 
 // https://github.com/rust-lang/cargo/blob/master/src/cargo/util/style.rs
 pub fn get_styles() -> Styles {
@@ -50,6 +53,9 @@ pub struct Args {
     /// URL of Substrate node to connect to
     #[arg(short, long)]
     pub url: Option<String>,
+    /// Port to open for WebSocket queries
+    #[arg(short, long, default_value_t = 8172)]
+    pub port: u16,
     #[command(flatten)]
     verbose: Verbosity<InfoLevel>,
 }
@@ -149,13 +155,15 @@ async fn main() -> Result<()> {
         queue_depth,
         exit_rx.clone(),
     ));
+    // Spawn websockets task.
+    let websockets_task = spawn(websockets_listen(trees.clone(), args.port, exit_rx));
     // Wait for signal.
     let mut signals = Signals::new(TERM_SIGNALS).unwrap();
     signals.next().await;
     info!("Exiting.");
     let _ = exit_tx.send(true);
     // Wait to exit.
-    let _result = join!(substrate_index);
+    let _result = join!(substrate_index, websockets_task);
     // Close db.
     // let _ = close_trees::<R>(trees);
     exit(0);

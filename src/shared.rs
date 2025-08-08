@@ -49,3 +49,39 @@ pub struct Span {
     pub start: u32,
     pub end: u32,
 }
+
+/// JSON request messages
+#[derive(Deserialize, Debug, Clone)]
+#[serde(tag = "type")]
+pub enum RequestMessage {
+    Status,
+    GetFeathers {
+        block_number: u32,
+        limit: u32,
+        account_id: Option<[u8; 32]>,
+        genre: Option<String>,
+    },
+    SizeOnDisk,
+}
+
+/// Start and end block number for a span of blocks
+#[derive(Serialize, Debug, Clone, PartialEq, Deserialize)]
+pub struct Feather {
+    pub block_number: u32,
+    pub index: u16,
+    pub account_id: [u8; 32],
+    pub remark: String,
+}
+
+/// JSON response messages
+#[derive(Serialize, Debug, Clone)]
+#[serde(tag = "type", content = "data")]
+#[serde(rename_all = "camelCase")]
+pub enum ResponseMessage {
+    Status(Vec<Span>),
+    Feathers(Vec<Feather>),
+    Subscribed,
+    Unsubscribed,
+    SizeOnDisk(u64),
+    //    Error,
+}
