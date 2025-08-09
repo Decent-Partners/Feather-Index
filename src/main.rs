@@ -53,6 +53,9 @@ pub struct Args {
     /// URL of Substrate node to connect to
     #[arg(short, long)]
     pub url: Option<String>,
+    /// Load feathers from blocks before they are finalized
+    #[arg(short, long, default_value_t = false)]
+    pub best: bool,
     /// Port to open for WebSocket queries
     #[arg(short, long, default_value_t = 8172)]
     pub port: u16,
@@ -145,13 +148,12 @@ async fn main() -> Result<()> {
     // Create a watch channel to exit the program.
     let (exit_tx, exit_rx) = watch::channel(false);
     // Start indexer thread.
-    let finalized = false;
     let queue_depth = 1;
     let substrate_index = spawn(substrate::substrate_index(
         trees.clone(),
         api.clone(),
         rpc.clone(),
-        finalized,
+        args.best,
         queue_depth,
         exit_rx.clone(),
     ));

@@ -177,22 +177,22 @@ pub async fn substrate_index(
     trees: Trees,
     api: OnlineClient<PolkadotConfig>,
     rpc: LegacyRpcMethods<PolkadotConfig>,
-    finalized: bool,
+    best: bool,
     queue_depth: u32,
     mut exit_rx: watch::Receiver<bool>,
 ) -> Result<(), IndexError> {
     info!(
-        "📇 Only index finalized blocks: {}",
-        match finalized {
+        "📇 Load feathers before finalization: {}",
+        match best {
             false => "disabled",
             true => "enabled",
         },
     );
 
-    let mut blocks_sub = if finalized {
-        api.blocks().subscribe_finalized().await
-    } else {
+    let mut blocks_sub = if best {
         api.blocks().subscribe_best().await
+    } else {
+        api.blocks().subscribe_finalized().await
     }?;
 
     // Determine the correct block to start batch indexing.
