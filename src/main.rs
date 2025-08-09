@@ -53,6 +53,9 @@ pub struct Args {
     /// URL of Substrate node to connect to
     #[arg(short, long)]
     pub url: Option<String>,
+    /// Maximum number of concurrent requests to the chain
+    #[arg(long, default_value_t = 1)]
+    pub queue_depth: u8,
     /// Load feathers from blocks before they are finalized
     #[arg(short, long, default_value_t = false)]
     pub best: bool,
@@ -148,13 +151,12 @@ async fn main() -> Result<()> {
     // Create a watch channel to exit the program.
     let (exit_tx, exit_rx) = watch::channel(false);
     // Start indexer thread.
-    let queue_depth = 1;
     let substrate_index = spawn(substrate::substrate_index(
         trees.clone(),
         api.clone(),
         rpc.clone(),
         args.best,
-        queue_depth,
+        args.queue_depth,
         exit_rx.clone(),
     ));
     // Spawn websockets task.

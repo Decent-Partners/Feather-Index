@@ -178,7 +178,7 @@ pub async fn substrate_index(
     api: OnlineClient<PolkadotConfig>,
     rpc: LegacyRpcMethods<PolkadotConfig>,
     best: bool,
-    queue_depth: u32,
+    queue_depth: u8,
     mut exit_rx: watch::Receiver<bool>,
 ) -> Result<(), IndexError> {
     info!(
