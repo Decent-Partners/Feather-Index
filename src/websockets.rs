@@ -2,12 +2,13 @@ use std::net::SocketAddr;
 
 use futures::{SinkExt, StreamExt};
 use sled::Tree;
+use subxt::utils::AccountId32;
 use tokio::{
     net::{TcpListener, TcpStream},
     sync::watch::Receiver,
 };
 use tokio_tungstenite::tungstenite;
-use tracing_log::log::{error, info};
+use tracing_log::log::{debug, error, info};
 use zerocopy::{FromBytes, IntoBytes};
 
 use crate::Trees;
@@ -29,7 +30,7 @@ pub fn process_msg_get_feathers(
     feathers_db: &Tree,
     block_number: u32,
     limit: u32,
-    account_id: Option<[u8; 32]>,
+    account_id: Option<AccountId32>,
     genre: Option<String>,
 ) -> ResponseMessage {
     let mut feathers = vec![];
@@ -38,33 +39,38 @@ pub fn process_msg_get_feathers(
         index: 0.into(),
         account_id: [0; 32].into(),
     };
-    let mut iter = feathers_db.scan_prefix(key.as_bytes());
+    debug!("search key: {:?}", key.as_bytes());
+    let mut iter = feathers_db.range(key.as_bytes()..);
 
     while let Some(Ok((key, value))) = iter.next_back() {
-        let key = FeatherDbKey::read_from_bytes(&key).unwrap();
+        debug!("key: {:?}", key);
+        if let Ok(key) = FeatherDbKey::read_from_bytes(&key) {
+            if let Some(account_id) = account_id.clone() {
+                if key.account_id != account_id.0 {
+                    continue;
+                }
+            }
 
-        if Some(key.account_id) != account_id {
-            continue;
-        }
+            let remark: String = value.to_vec().try_into().unwrap();
 
-        let remark: String = value.to_vec().try_into().unwrap();
+            if let Some(genre) = genre.clone() {
+                let components: Vec<&str> = remark.split("::").collect();
+                if components[1].to_string() != genre {
+                    continue;
+                }
+            }
+            feathers.push(Feather {
+                block_number: key.block_number.into(),
+                index: key.index.into(),
+                account_id: subxt::utils::AccountId32(key.account_id),
+                remark: remark,
+            });
 
-        let components: Vec<&str> = remark.split("::").collect();
-        if Some(components[1].to_string()) != genre {
-            continue;
-        }
+            let len: u32 = feathers.len().try_into().unwrap();
 
-        feathers.push(Feather {
-            block_number: key.block_number.into(),
-            index: key.index.into(),
-            account_id: key.account_id,
-            remark: remark,
-        });
-
-        let len: u32 = feathers.len().try_into().unwrap();
-
-        if len == limit {
-            break;
+            if len == limit {
+                break;
+            }
         }
     }
     ResponseMessage::Feathers(feathers)
@@ -74,6 +80,7 @@ pub async fn process_msg(
     trees: &Trees,
     msg: RequestMessage,
 ) -> Result<ResponseMessage, IndexError> {
+    debug!("{:?}", msg);
     Ok(match msg {
         RequestMessage::Status => process_msg_status(&trees.span),
         RequestMessage::GetFeathers {
@@ -101,6 +108,7 @@ async fn handle_connection(
     loop {
         tokio::select! {
               Some(Ok(msg)) = ws_receiver.next() => {
+                  debug!("{:?}", msg);
                   if msg.is_text() || msg.is_binary() {
                       match serde_json::from_str(msg.to_text()?) {
                           Ok(request_json) => {

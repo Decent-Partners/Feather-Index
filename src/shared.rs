@@ -1,4 +1,5 @@
 use serde::{Deserialize, Serialize};
+use subxt::utils::AccountId32;
 use tokio_tungstenite::tungstenite;
 use zerocopy::*;
 use zerocopy_derive::*;
@@ -58,7 +59,7 @@ pub enum RequestMessage {
     GetFeathers {
         block_number: u32,
         limit: u32,
-        account_id: Option<[u8; 32]>,
+        account_id: Option<AccountId32>,
         genre: Option<String>,
     },
     SizeOnDisk,
@@ -69,7 +70,7 @@ pub enum RequestMessage {
 pub struct Feather {
     pub block_number: u32,
     pub index: u16,
-    pub account_id: [u8; 32],
+    pub account_id: AccountId32,
     pub remark: String,
 }
 
